@@ -12,35 +12,49 @@ async function Register(req, res, next) {
   let { Name, Email, UserName, Password, PhoneNumber } = req.body;
   let findByUserName = await user.findOne({ UserName: UserName });
   let findEmail = await user.findOne({ Email: Email });
-  if (!findByUserName && !findEmail) {
-    let hashedPassword = await bcrypt.hash(`${Password}`, 5);
-    const createdUser = await user.create({
-      Name,
-      Email,
-      UserName,
-      Password: hashedPassword,
-      PhoneNumber,
-    });
-    return res.status(200).json({
-      Message: "User was registered successfully",
-    });
+  if (!findEmail) {
+    if (!findByUserName) {
+      let hashedPassword = await bcrypt.hash(`${Password}`, 5);
+      const createdUser = await user.create({
+        Name,
+        Email,
+        UserName,
+        Password: hashedPassword,
+        PhoneNumber,
+      });
+      return res.status(200).json({
+        Message: "User was registered successfully",
+      });
+    } else {
+      const error = new ApiError("User Name already exists", 409);
+      return next(error);
+    }
   } else {
-    const error = new ApiError("UserName or Email already exists", 409);
+    const error = new ApiError("Email already exists", 409);
     return next(error);
   }
 }
 
 // Login
 async function Login(req, res, next) {
-  let { UserName, Password } = req.body;
-  let findByUserName = await user.findOne({ UserName: UserName });
-  if (findByUserName) {
-    bcrypt.compare(Password, findByUserName.Password, function (error, result) {
+  let { Email, Password, RememberMe } = req.body;
+  let findByEmail = await user.findOne({ Email: Email });
+  if (findByEmail) {
+    bcrypt.compare(Password, findByEmail.Password, function (error, result) {
       if (error) {
-        const error = new ApiError("Invalid Password or User Name", 403);
+        const error = new ApiError("Invalid Password or Email", 403);
         return next(error);
       } else if (result == true) {
-        let token = jwt.sign({ UserName, Role: findByUserName.Role }, tokenKey);
+        let token;
+        if (RememberMe) {
+          token = jwt.sign({ Email, Role: findByEmail.Role }, tokenKey, {
+            expiresIn: "30d",
+          });
+        } else {
+          token = jwt.sign({ Email, Role: findByEmail.Role }, tokenKey, {
+            expiresIn: "1d",
+          });
+        }
         return res.status(200).json({
           Message: "Logged in successfully",
           Token: token,
@@ -48,7 +62,7 @@ async function Login(req, res, next) {
       }
     });
   } else {
-    const error = new ApiError("Invalid Password or User Name", 403);
+    const error = new ApiError("Invalid Password or Email", 403);
     return next(error);
   }
 }
@@ -216,7 +230,10 @@ async function ChangePassword(req, res, next) {
     return next(error);
   }
   if (oldPassword === newPassword) {
-    const error = new ApiError("New password must be different from the old one", 400);
+    const error = new ApiError(
+      "New password must be different from the old one",
+      400
+    );
     return next(error);
   }
   const isMatch = await bcrypt.compare(oldPassword, currentUser.Password);
@@ -271,7 +288,10 @@ async function logReading(req, res, next) {
 // Calculate daily reading statistics
 async function getDailyReadingStats(req, res, next) {
   try {
-    const userId = req.user.Role === "admin" && req.query.userId ? req.query.userId : req.user.id;
+    const userId =
+      req.user.Role === "admin" && req.query.userId
+        ? req.query.userId
+        : req.user.id;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -324,7 +344,10 @@ async function getDailyReadingStats(req, res, next) {
 // Calculate annual reading statistics
 async function getAnnualReadingStats(req, res, next) {
   try {
-    const userId = req.user.Role === "admin" && req.query.userId ? req.query.userId : req.user.id;
+    const userId =
+      req.user.Role === "admin" && req.query.userId
+        ? req.query.userId
+        : req.user.id;
     const currentYear = new Date().getFullYear();
     const startOfYear = new Date(currentYear, 0, 1);
     const startOfNextYear = new Date(currentYear + 1, 0, 1);
@@ -388,5 +411,3 @@ module.exports = {
   getDailyReadingStats,
   getAnnualReadingStats,
 };
-
-
